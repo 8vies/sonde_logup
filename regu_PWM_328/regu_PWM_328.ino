@@ -33,7 +33,10 @@ int numberOfDevices=0;
 DeviceAddress tempDeviceAddress; 
 //String getStr="";
 
+char id_board='e';
+uint8_t verb=0;
 
+float ctA=20;
 
 float temperature[16];
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -106,7 +109,7 @@ void setup() {
   digitalWrite(2,1);
           delay(10);
   
-  Serial.print("start:  ");
+  if(verb) Serial.print("start:  ");
   
  read_ee();
   
@@ -115,11 +118,11 @@ void setup() {
   sensors.begin();
   // Grab a count of devices on the wire
   numberOfDevices = sensors.getDeviceCount();
-  Serial.println("nb temp captor ="+String(numberOfDevices));
+  if(verb) Serial.println("nb temp captor ="+String(numberOfDevices));
 
   if(EEPROM.read(EE_1WIREADR)==255)
 {
- Serial.println("clearing eeprom");
+ if(verb) Serial.println("clearing eeprom");
         for (int i = EE_1WIREADR; i < EE_1WIREADR + 100; ++i) {
           EEPROM.write(i, 0x00);
         }
@@ -127,13 +130,15 @@ void setup() {
 }
 }
 int8_t cnt_essai=0;
-
+////////////////////////////////////////////////////////////
 void loop() {
-
+    while (Serial.available() > 0) { parser(Serial.read());}
+      
+    
    if(decl_pid) 
    {
    get1Wire();
-    set_pwm(0,calc_pid(temperature[0],28));
+    set_pwm(0,calc_pid(temperature[0],ctA));
     decl_pid=0;
    }
 
@@ -155,7 +160,7 @@ String tempStr="";
 ///// si connu en EEPROM inscrit sa temperature dans l'ordre des nouveaux capteurs inscrits dans float "temperature[n]"
 void get1Wire()
 {
-   Serial.println("Read 1Wire Temperature ");
+   //if(verb) Serial.println("Read 1Wire Temperature ");
 
   sensors.requestTemperatures(); // Send the command to get temperatures
 
@@ -177,12 +182,14 @@ void get1Wire()
                 temperature[j] = sensors.getTempC(tempDeviceAddress);
                 newtemp=0;
                 
-                  Serial.print("Temperature [");
+                 if(verb) 
+                 {  Serial.print("Temperature [");
                   Serial.print(i);
                   Serial.print("]{");
                   Serial.print(j);
                   Serial.print("}=");
                   Serial.print(temperature[j]);
+                  }
               }
               j++;
         }
@@ -195,7 +202,8 @@ void get1Wire()
               
         //      EEPROM.commit();
         
-                  Serial.print("j=");
+                  if(verb)
+                  {Serial.print("j=");
                   Serial.println(j);
     
               Serial.println("New Temperature ");
@@ -216,8 +224,10 @@ void get1Wire()
                   Serial.print(EEPROM.read(EE_1WIREADR+2*j+1));
                   Serial.print("  ");
                   Serial.println("");
+                  }
                   
-           }else{Serial.println("too much Temperature device !!");//: "+String(i)+" - "+String(j)+"[adr:"+String(tempDeviceAddress[6])+" "+String(tempDeviceAddress[7])+"] = "+wiredata); }
+           }else{
+            if(verb) Serial.println("too much Temperature device !!");//: "+String(i)+" - "+String(j)+"[adr:"+String(tempDeviceAddress[6])+" "+String(tempDeviceAddress[7])+"] = "+wiredata); }
                 } 
         }
     }
@@ -227,6 +237,8 @@ void get1Wire()
 
     
     float pid_p=0,pid_i=0,pid_d=0;
+    
+      float pid_r=0;
     float pid_fp=10,pid_fi=0.01,pid_fd=10;
     uint8_t pid_max_p=40,pid_max_i=40,pid_max_d=40,pid_max=40,pid_min=-40;
     float last_temp=0;
@@ -234,7 +246,6 @@ void get1Wire()
     
     float calc_pid(float temp,float consigne)
     {
-      float pid_r=0;
       pid_p=consigne-temp;
       pid_i+=consigne-temp;
       pid_d=temp-last_temp;
@@ -247,7 +258,8 @@ void get1Wire()
       pid_r=pid_p*coef_p+pid_i*coef_i+pid_d*coef_d;
       if(pid_r>(float) pid_max) pid_r=pid_max;
       if(pid_r<-(float) pid_min) pid_r=(float) pid_min;
-                  Serial.print("   P=");
+                  if(verb) 
+                  {Serial.print("   P=");
                   Serial.print(pid_p);
                   Serial.print("  i=");
                   Serial.print(pid_i);
@@ -255,6 +267,7 @@ void get1Wire()
                   Serial.print(pid_d);
                   Serial.print("           PID=");
                   Serial.println(pid_r);
+                  }
       
       last_temp=temp;
       return(pid_r);
@@ -262,11 +275,14 @@ void get1Wire()
     
     void read_ee()
     {
-                  Serial.println("Read EEprom:");
+                  if(verb) Serial.println("Read EEprom:");
       for (int i=EE_1WIREADR;i<EE_1WIREADR+16;i+=2)
       {
         
-                  Serial.print(i);
+                  if(verb) 
+                  {
+                    Serial.print(i);
+                  
                   Serial.print("    ");
         
                   Serial.print(EEPROM.read(i));
@@ -275,6 +291,7 @@ void get1Wire()
                   Serial.print(EEPROM.read(i+1));
                   Serial.print("  ");
                   Serial.println("");
+                  }
       }
       
     }
@@ -299,3 +316,101 @@ void get1Wire()
             pwm_down[temp_no]=0;
         }
     }
+#define PARSER_SIZE 12
+char parser_cmd[PARSER_SIZE],parser_data[PARSER_SIZE];
+uint8_t cmd_ptr=0,data_ptr=0,parser_mode=0;
+
+void parser(char car)
+{
+    if(car=='\n'||car=='r')
+    {
+      parser_data[data_ptr]=0;
+      parser_cmd[cmd_ptr]=0;
+      
+      parser_decode();
+      
+      parser_mode=0;
+      cmd_ptr=0;
+      data_ptr=0;
+    }
+    else if (car=='=')
+    {
+      parser_cmd[cmd_ptr]=0;
+      parser_mode=1;
+    }
+    else
+    {
+      if(parser_mode==0)
+      {
+        parser_cmd[cmd_ptr]=car;
+        if(cmd_ptr<PARSER_SIZE)  cmd_ptr++;
+      }
+      else
+      {
+        parser_data[data_ptr]=car;
+        if(data_ptr<PARSER_SIZE)  data_ptr++;
+      }
+    }
+  
+}
+void parser_decode()
+{
+  if(parser_cmd[0]!=id_board&&parser_cmd[0]!='_') return;
+  
+  if(strcmp(&parser_cmd[1],"v")==0) verb=atoi(parser_data);
+  else if(strcmp(&parser_cmd[1],"ctA")==0) ctA=atof(parser_data);
+  else if(strcmp(&parser_cmd[1],"tmp")==0) send_mesure(1);
+  else if(strcmp(&parser_cmd[1],"pid")==0) send_mesure(2);
+  else if(strcmp(&parser_cmd[1],"get")==0) send_mesure(atoi(parser_data));
+  else if(strcmp(&parser_cmd[1],"board")==0) send_mesure(0);
+  else
+  {
+    if(verb) { Serial.print("inconnu "); Serial.print(parser_cmd); Serial.print("="); Serial.println(parser_data); }
+    return;
+  }
+  if(verb) { Serial.print("command : "); Serial.print(parser_cmd); Serial.print("="); Serial.println(parser_data); }
+    
+
+  
+}
+
+void send_mesure(uint8_t type)
+{
+   if(type==0)
+   {
+                  Serial.print("y=");
+                  Serial.print(id_board); //printfloat(pid_p);
+                  Serial.print("&");
+   }
+  if(type&0x01) 
+      for(int i =0;i<numberOfDevices;i++)
+      {
+          Serial.print((char) (id_board+i)); //'e' + i
+          Serial.print("="); //
+          Serial.print(temperature[i]); //printfloat(temperature[i]);
+          Serial.print("&"); //
+      }
+   if(type&0x02)
+   {
+                  Serial.print("u=");
+                  Serial.print(pid_p); //printfloat(pid_p);
+                  Serial.print("&v=");
+                  Serial.print(pid_i); //printfloat(pid_i);
+                  Serial.print("&w=");
+                  Serial.print(pid_d); //printfloat(pid_d);
+                  Serial.print("&x=");
+                  Serial.print(pid_r); //printfloat(pid_r);
+                  Serial.print("&");
+   }
+   
+}
+void printfloat(float f)
+{
+  /*
+  char s[12];
+  sprintf(s,"%f",f);
+          for(int j=0;j<12;j++) if(s[j]==',') s[j]=='.';
+          */
+          Serial.print(f); //
+  
+}
