@@ -39,6 +39,7 @@ uint8_t verb=0;
 float ctA=20;
 
 float temperature[16];
+float consigne[16];
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////    IT    ////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -108,6 +109,8 @@ void setup() {
   pinMode(2, OUTPUT);
   digitalWrite(2,1);
           delay(10);
+
+  for(int i =0;i<16;i++) consigne[i]=20;
   
   if(verb) Serial.print("start:  ");
   
@@ -138,7 +141,7 @@ void loop() {
    if(decl_pid) 
    {
    get1Wire();
-    set_pwm(0,calc_pid(temperature[0],ctA));
+    set_pwm(0,calc_pid(temperature[0],consigne[0]));
     decl_pid=0;
    }
 
@@ -359,6 +362,7 @@ void parser_decode()
   
   if(strcmp(&parser_cmd[1],"v")==0) verb=atoi(parser_data);
   else if(strcmp(&parser_cmd[1],"ctA")==0) ctA=atof(parser_data);
+  else if(strcmp(&parser_cmd[2],"-ct")==0) consigneTemp(parser_cmd[1],atof(parser_data));
   else if(strcmp(&parser_cmd[1],"tmp")==0) send_mesure(1);
   else if(strcmp(&parser_cmd[1],"pid")==0) send_mesure(2);
   else if(strcmp(&parser_cmd[1],"get")==0) send_mesure(atoi(parser_data));
@@ -413,4 +417,10 @@ void printfloat(float f)
           */
           Serial.print(f); //
   
+}
+
+void consigneTemp(char lettre,float value) 
+{
+  uint8_t notemp=(uint8_t) lettre -(uint8_t)  id_board;
+  if(notemp<16) consigne[notemp]=value;
 }
