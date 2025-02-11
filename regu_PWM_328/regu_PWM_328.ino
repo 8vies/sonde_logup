@@ -19,6 +19,8 @@ uint8_t cnt_col=FIRST_TEMP_COL;
 #define SET_P0 PORTB|=0x02; //   0000 0010 D9:PB1
 #define CLEAR_P0 PORTB&=0xFD; //  
 
+#define NB_REGU 1
+
 #include <EEPROM.h>
 
 #include <OneWire.h>
@@ -30,6 +32,7 @@ OneWire oneWire(oneWireBus);
 // Pass our oneWire reference to Dallas Temperature sensor 
 DallasTemperature sensors(&oneWire);
 int numberOfDevices=0; 
+
 DeviceAddress tempDeviceAddress; 
 //String getStr="";
 
@@ -141,7 +144,10 @@ void loop() {
    if(decl_pid) 
    {
    get1Wire();
-    set_pwm(0,calc_pid(temperature[0],consigne[0]));
+     for(uint8_t channel=0;channel<NB_REGU;channel++) 
+     {
+      set_pwm(channel,calc_pid(channel));//temperature[0],consigne[0]));
+     }
     decl_pid=0;
    }
 
@@ -239,41 +245,43 @@ void get1Wire()
 
 
     
-    float pid_p=0,pid_i=0,pid_d=0;
+    float pid_p[8]={0,0,0,0,0,0,0,0},pid_i[8]={0,0,0,0,0,0,0,0},pid_d[8]={0,0,0,0,0,0,0,0};
     
-      float pid_r=0;
-    float pid_fp=10,pid_fi=0.01,pid_fd=10;
+      float pid_r[8]={0,0,0,0,0,0,0,0};
+   // float pid_fp=10,pid_fi=0.01,pid_fd=10;
     uint8_t pid_max_p=40,pid_max_i=40,pid_max_d=40,pid_max=40,pid_min=-40;
-    float last_temp=0;
+    float last_temp[8]={0,0,0,0,0,0,0,0};
     float coef_p=5,coef_i=0.1,coef_d=5;
     
-    float calc_pid(float temp,float consigne)
+    float calc_pid(uint8_t channel)//float temp,float consigne)
     {
-      pid_p=consigne-temp;
-      pid_i+=consigne-temp;
-      pid_d=temp-last_temp;
-      if(pid_p>(float) pid_max_p) pid_p=pid_max_p;
-      if(pid_p<-(float) pid_max_p) pid_p=-(float) pid_max_p;
-      if(pid_i>(float) pid_max_i) pid_i=pid_max_i;
-      if(pid_i<-(float) pid_max_i) pid_i=-(float) pid_max_i;
-      if(pid_d>(float) pid_max_d) pid_d=pid_max_d;
-      if(pid_d<-(float) pid_max_d) pid_d=-(float) pid_max_d;
-      pid_r=pid_p*coef_p+pid_i*coef_i+pid_d*coef_d;
-      if(pid_r>(float) pid_max) pid_r=pid_max;
-      if(pid_r<-(float) pid_min) pid_r=(float) pid_min;
+     
+      pid_p[channel]=consigne[channel]-temperature[channel];
+      pid_i[channel]+=consigne[channel]-temperature[channel];
+      pid_d[channel]=temperature[channel]-last_temp[channel];
+      if(pid_p[channel]>(float) pid_max_p) pid_p[channel]=pid_max_p;
+      if(pid_p[channel]<-(float) pid_max_p) pid_p[channel]=-(float) pid_max_p;
+      if(pid_i[channel]>(float) pid_max_i) pid_i[channel]=pid_max_i;
+      if(pid_i[channel]<-(float) pid_max_i) pid_i[channel]=-(float) pid_max_i;
+      if(pid_d[channel]>(float) pid_max_d) pid_d[channel]=pid_max_d;
+      if(pid_d[channel]<-(float) pid_max_d) pid_d[channel]=-(float) pid_max_d;
+      pid_r[channel]=pid_p[channel]*coef_p+pid_i[channel]*coef_i+pid_d[channel]*coef_d;
+      if(pid_r[channel]>(float) pid_max) pid_r[channel]=pid_max;
+      if(pid_r[channel]<-(float) pid_min) pid_r[channel]=(float) pid_min;
                   if(verb) 
                   {Serial.print("   P=");
-                  Serial.print(pid_p);
+                  Serial.print(pid_p[channel]);
                   Serial.print("  i=");
-                  Serial.print(pid_i);
+                  Serial.print(pid_i[channel]);
                   Serial.print("  D=");
-                  Serial.print(pid_d);
+                  Serial.print(pid_d[channel]);
                   Serial.print("           PID=");
-                  Serial.println(pid_r);
+                  Serial.println(pid_r[channel]);
                   }
       
-      last_temp=temp;
-      return(pid_r);
+      last_temp[channel]=temperature[channel];
+      
+      return(pid_r[channel]);
     }
     
     void read_ee()
@@ -362,9 +370,17 @@ void parser_decode()
   
   if(strcmp(&parser_cmd[1],"v")==0) verb=atoi(parser_data);
   else if(strcmp(&parser_cmd[1],"ctA")==0) ctA=atof(parser_data);
+  else if(strcmp(&parser_cmd[1],"coefP")==0) coef_p=atof(parser_data);
+  else if(strcmp(&parser_cmd[1],"coefI")==0) coef_i=atof(parser_data);
+  else if(strcmp(&parser_cmd[1],"coefD")==0) coef_d=atof(parser_data);//pid_max_p
+  else if(strcmp(&parser_cmd[1],"pid_max_p")==0) pid_max_p=atof(parser_data);
+  else if(strcmp(&parser_cmd[1],"pid_max_i")==0) pid_max_i=atof(parser_data);
+  else if(strcmp(&parser_cmd[1],"pid_max_d")==0) pid_max_d=atof(parser_data);
+  else if(strcmp(&parser_cmd[1],"pid_max")==0) pid_max=atof(parser_data);
+  else if(strcmp(&parser_cmd[1],"pid_min")==0) pid_min=atof(parser_data);
   else if(strcmp(&parser_cmd[2],"-ct")==0) consigneTemp(parser_cmd[1],atof(parser_data));
   else if(strcmp(&parser_cmd[1],"tmp")==0) send_mesure(1);
-  else if(strcmp(&parser_cmd[1],"pid")==0) send_mesure(2);
+  else if(strcmp(&parser_cmd[1],"pid")==0) send_pid(atoi(parser_data));
   else if(strcmp(&parser_cmd[1],"get")==0) send_mesure(atoi(parser_data));
   else if(strcmp(&parser_cmd[1],"board")==0) send_mesure(0);
   else
@@ -396,17 +412,22 @@ void send_mesure(uint8_t type)
       }
    if(type&0x02)
    {
-                  Serial.print("u=");
-                  Serial.print(pid_p); //printfloat(pid_p);
-                  Serial.print("&v=");
-                  Serial.print(pid_i); //printfloat(pid_i);
-                  Serial.print("&w=");
-                  Serial.print(pid_d); //printfloat(pid_d);
-                  Serial.print("&x=");
-                  Serial.print(pid_r); //printfloat(pid_r);
-                  Serial.print("&");
+                 
    }
    
+}
+void send_pid(uint8_t voie)
+{
+                  Serial.print("u=");
+                  Serial.print(pid_p[voie]); //printfloat(pid_p);
+                  Serial.print("&v=");
+                  Serial.print(pid_i[voie]); //printfloat(pid_i);
+                  Serial.print("&w=");
+                  Serial.print(pid_d[voie]); //printfloat(pid_d);
+                  Serial.print("&x=");
+                  Serial.print(pid_r[voie]); //printfloat(pid_r);
+                  Serial.print("&");
+  
 }
 void printfloat(float f)
 {
